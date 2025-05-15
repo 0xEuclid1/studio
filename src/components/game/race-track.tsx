@@ -1,8 +1,7 @@
-
 "use client";
 
 import type { Player, Checkpoint } from '@/types';
-import { TRACK_PATH, TRACK_SVG_VIEWBOX, TRACK_COLOR, TRACK_STROKE_WIDTH, CAR_RADIUS, RACE_LAPS } from '@/lib/game-config';
+import { TRACK_PATH, TRACK_SVG_VIEWBOX, TRACK_COLOR, TRACK_STROKE_WIDTH, CAR_RADIUS, RACE_LAPS, CHECKPOINTS } from '@/lib/game-config';
 import React, { useRef, useEffect, useState } from 'react';
 import { Zap, Flag } from 'lucide-react';
 
@@ -11,31 +10,70 @@ interface RaceTrackProps {
   checkpoints: Checkpoint[];
   countdown: number | null; 
   gamePhase: string;
+  currentPlayerId: string | null;
+  onCheckpointPassed: (checkpointId: number) => void;
+  onRaceFinish: () => void;
 }
 
-export function RaceTrack({ players, checkpoints, countdown, gamePhase }: RaceTrackProps) {
+export function RaceTrack({ 
+  players, 
+  checkpoints, 
+  countdown, 
+  gamePhase,
+  currentPlayerId,
+  onCheckpointPassed,
+  onRaceFinish
+}: RaceTrackProps) {
   const pathRef = useRef<SVGPathElement>(null);
   const [pathLength, setPathLength] = useState(0);
+  const lastCheckpointRef = useRef<number>(0);
+  const raceFinishedRef = useRef<boolean>(false);
 
+  // Get current player object
+  const currentPlayer = players.find(p => p.id === currentPlayerId);
+  
   useEffect(() => {
     if (pathRef.current) {
       setPathLength(pathRef.current.getTotalLength());
     }
   }, []);
 
+  // Check for checkpoint passing and race finish for the current player
+  useEffect(() => {
+    if (gamePhase !== 'racing' || !currentPlayer || !currentPlayerId || pathLength === 0) {
+      return;
+    }
+    
+    // Check for checkpoint passing
+    for (const checkpoint of CHECKPOINTS) {
+      // If player has passed a new checkpoint
+      if (currentPlayer.position >= checkpoint.position && 
+          checkpoint.id > lastCheckpointRef.current) {
+        lastCheckpointRef.current = checkpoint.id;
+        onCheckpointPassed(checkpoint.id);
+        break;
+      }
+    }
+    
+    // Check for race finish
+    if (!raceFinishedRef.current && currentPlayer.position >= 1) {
+      raceFinishedRef.current = true;
+      onRaceFinish();
+    }
+  }, [currentPlayer, gamePhase, onCheckpointPassed, onRaceFinish, pathLength, currentPlayerId]);
+
   const getCarPosition = (playerPos: number) => {
     if (!pathRef.current || pathLength === 0 || playerPos < 0) { 
       return { x: 0, y: 0 }; 
     }
-    // Konumu toplam yarış mesafesine (RACE_LAPS) göre ölçekle
-    const totalDistance = playerPos / RACE_LAPS;
+    
+    // Scale position to total race distance (RACE_LAPS)
+    const totalDistance = playerPos;
     const distanceOnPath = totalDistance * pathLength;
     
-    // Eğer pozisyon yolun uzunluğunu aşarsa, yolun sonunda tut.
-    // Bu, özellikle RACE_LAPS > 1 olduğunda önemlidir, ancak tek lap için de doğru çalışır.
+    // If position exceeds path length, keep it at the end of the path
     return pathRef.current.getPointAtLength(Math.min(distanceOnPath, pathLength));
   };
-  
 
   return (
     <div className="w-full h-screen flex flex-col items-center justify-center bg-background p-4 relative">
@@ -70,8 +108,11 @@ export function RaceTrack({ players, checkpoints, countdown, gamePhase }: RaceTr
         
         {/* Arabalar */}
         {players.map(player => {
+          if (!player.isReady) return null; // Don't render players who aren't ready
+          
           const pos = getCarPosition(player.position);
-          // Path yüklenmeden önce arabayı (0,0) yerine pistin başlangıcında göstermek için bir kontrol
+          
+          // If path isn't loaded yet, show car at start of track
           if(pos.x === 0 && pos.y === 0 && player.position === 0 && pathRef.current && pathLength > 0) {
              const initialPoint = pathRef.current.getPointAtLength(0);
              if(initialPoint) {
@@ -79,9 +120,20 @@ export function RaceTrack({ players, checkpoints, countdown, gamePhase }: RaceTr
                 pos.y = initialPoint.y;
              }
           }
+          
+          // Highlight current player's car
+          const isCurrentPlayer = player.id === currentPlayerId;
+          const strokeWidth = isCurrentPlayer ? 3 : 2;
+          const strokeColor = isCurrentPlayer ? "white" : "rgba(255,255,255,0.7)";
+          
           return (
             <g key={player.id} transform={`translate(${pos.x}, ${pos.y})`}>
-              <circle r={CAR_RADIUS} fill={player.color} stroke="rgba(255,255,255,0.7)" strokeWidth="2" />
+              <circle 
+                r={isCurrentPlayer ? CAR_RADIUS + 2 : CAR_RADIUS} 
+                fill={player.color} 
+                stroke={strokeColor} 
+                strokeWidth={strokeWidth} 
+              />
               <text
                 x="0"
                 y={CAR_RADIUS + 12} 
@@ -91,20 +143,30 @@ export function RaceTrack({ players, checkpoints, countdown, gamePhase }: RaceTr
                 stroke="black"
                 strokeWidth="0.3px"
                 paintOrder="stroke"
-                className="font-semibold"
+                className={`font-semibold ${isCurrentPlayer ? 'font-bold' : ''}`}
               >
                 {player.name}
+                {isCurrentPlayer ? ' (Sen)' : ''}
               </text>
             </g>
           );
         })}
       </svg>
-       <div className="absolute bottom-4 left-4 p-2 bg-background/70 rounded-md border">
-        {players.map(p => (
-          <div key={p.id} className="text-sm">
-            <span style={{color: p.color}} className="font-bold">{p.name}</span>: Tur {p.lap}, İlerleme: {(p.position / RACE_LAPS * 100).toFixed(0)}%
-          </div>
-        ))}
+      <div className="absolute bottom-4 left-4 p-2 bg-background/70 rounded-md border">
+        <h3 className="font-semibold mb-1">Yarışçılar:</h3>
+        {players
+          .filter(p => p.isReady)
+          .map(p => (
+            <div key={p.id} className="text-sm">
+              <span 
+                style={{color: p.color}} 
+                className={`font-bold ${p.id === currentPlayerId ? 'text-primary' : ''}`}
+              >
+                {p.name} {p.id === currentPlayerId ? '(Sen)' : ''}
+              </span>
+              : İlerleme: {(p.position * 100).toFixed(0)}%
+            </div>
+          ))}
       </div>
     </div>
   );

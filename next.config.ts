@@ -18,6 +18,16 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  reactStrictMode: false, // Socket.io bağlantı sorunlarını önlemek için
+  webpack: (config) => {
+    // socket.io-client için polyfill
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      net: false,
+    };
+    
+    return config;
+  },
 };
 
 export default nextConfig;
