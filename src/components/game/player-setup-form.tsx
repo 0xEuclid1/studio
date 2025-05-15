@@ -1,9 +1,11 @@
+
 "use client";
 
 import type { PlayerSetupInfo } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox'; // Eklendi
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useForm, Controller, SubmitHandler, FieldPath } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -13,6 +15,7 @@ import { useState } from 'react';
 const playerSchema = z.object({
   name: z.string().min(2, "Nickname must be at least 2 characters").max(15, "Nickname must be at most 15 characters"),
   color: z.string().regex(/^#[0-9A-F]{6}$/i, "Must be a valid hex color"),
+  isReady: z.boolean().optional().default(false), // Eklendi
 });
 
 const formSchema = z.object({
@@ -34,31 +37,36 @@ const defaultColors = ['#FF0000', '#0000FF', '#00FF00', '#FFFF00', '#800080']; /
 export function PlayerSetupForm({ onSetupComplete }: PlayerSetupFormProps) {
   const [playerColors, setPlayerColors] = useState<string[]>(defaultColors);
 
-  const { control, handleSubmit, formState: { errors }, setValue } = useForm<PlayerSetupFormValues>({
+  const { control, handleSubmit, formState: { errors }, setValue, watch } = useForm<PlayerSetupFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      player1: { name: 'Player 1', color: defaultColors[0] },
-      player2: { name: 'Player 2', color: defaultColors[1] },
-      player3: { name: 'Player 3', color: defaultColors[2] },
-      player4: { name: 'Player 4', color: defaultColors[3] },
-      player5: { name: 'Player 5', color: defaultColors[4] },
+      player1: { name: 'Player 1', color: defaultColors[0], isReady: false },
+      player2: { name: 'Player 2', color: defaultColors[1], isReady: false },
+      player3: { name: 'Player 3', color: defaultColors[2], isReady: false },
+      player4: { name: 'Player 4', color: defaultColors[3], isReady: false },
+      player5: { name: 'Player 5', color: defaultColors[4], isReady: false },
     },
   });
 
   const onSubmit: SubmitHandler<PlayerSetupFormValues> = (data) => {
-    onSetupComplete([data.player1, data.player2, data.player3, data.player4, data.player5]);
+    // Formdan gelen verileri PlayerSetupInfo dizisine dönüştür
+    const playerInfos: PlayerSetupInfo[] = Object.values(data).map(playerData => ({
+      name: playerData.name,
+      color: playerData.color,
+      isReady: playerData.isReady,
+    }));
+    onSetupComplete(playerInfos);
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
-      <Card className="w-full max-w-4xl shadow-2xl"> {/* Increased max-width for 5 players */}
+      <Card className="w-full max-w-4xl shadow-2xl">
         <CardHeader>
           <CardTitle className="text-3xl font-bold text-center text-primary">Velocity Dash Setup</CardTitle>
-          <CardDescription className="text-center">Customize your racers (up to 5) and get ready to dash!</CardDescription>
+          <CardDescription className="text-center">Customize your racers (up to 5). At least 3 players must be ready to start!</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
-            {/* Grid layout adjusted for potentially 5 players */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {([1, 2, 3, 4, 5] as const).map((playerNum) => (
                 <div key={playerNum} className="space-y-4 p-4 border rounded-lg shadow-md">
@@ -84,13 +92,12 @@ export function PlayerSetupForm({ onSetupComplete }: PlayerSetupFormProps) {
                           id={`player${playerNum}_color`}
                           type="color"
                           className="w-full h-12 p-1"
-                          value={playerColors[playerNum - 1]}
+                          value={field.value} // Controller'dan gelen değeri kullan
                           onChange={(e) => {
                             field.onChange(e.target.value);
                             const newColors = [...playerColors];
                             newColors[playerNum - 1] = e.target.value;
                             setPlayerColors(newColors);
-                            setValue(`player${playerNum}.color` as FieldPath<PlayerSetupFormValues>, e.target.value, { shouldValidate: true });
                           }}
                         />
                       )}
@@ -98,6 +105,22 @@ export function PlayerSetupForm({ onSetupComplete }: PlayerSetupFormProps) {
                      {errors && errors[`player${playerNum}`]?.color && (
                       <p className="text-sm text-destructive">{errors[`player${playerNum}`]?.color?.message}</p>
                     )}
+                  </div>
+                  <div className="flex items-center space-x-2 mt-3">
+                    <Controller
+                      name={`player${playerNum}.isReady` as FieldPath<PlayerSetupFormValues>}
+                      control={control}
+                      render={({ field }) => (
+                        <Checkbox
+                          id={`player${playerNum}_isReady`}
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      )}
+                    />
+                    <Label htmlFor={`player${playerNum}_isReady`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                      Hazırım
+                    </Label>
                   </div>
                 </div>
               ))}

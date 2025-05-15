@@ -1,3 +1,4 @@
+
 export interface Player {
   id: string;
   name: string;
@@ -22,4 +23,5 @@ export interface Checkpoint {
 export interface PlayerSetupInfo {
   name: string;
   color: string;
+  isReady?: boolean; // Oyuncunun yarışa hazır olup olmadığını belirtir
 }

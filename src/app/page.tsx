@@ -11,7 +11,6 @@ import {
   CHECKPOINTS, 
   COUNTDOWN_SECONDS, 
   RACE_LAPS,
-  // GAME_FPS, // GAME_FPS is not used
   getRandomSpeed,
   getInitialSpeeds
 } from '@/lib/game-config';
@@ -33,22 +32,37 @@ export default function VelocityDashPage() {
     raceStartTimeRef.current = null; 
   }, []);
 
-  const handleSetupComplete = useCallback((playerInfos: PlayerSetupInfo[]) => {
-    const initialPlayers: Player[] = playerInfos.map((info, index) => ({
-      id: `player${index + 1}`,
+  const handleSetupComplete = useCallback((allPlayerInfosFromForm: PlayerSetupInfo[]) => {
+    const readyPlayerInfos = allPlayerInfosFromForm.filter(info => info.isReady && info.name && info.name.trim() !== '');
+
+    if (readyPlayerInfos.length < 3) {
+      toast({
+        title: "Yetersiz Hazır Oyuncu",
+        description: `Yarışın başlaması için en az 3 oyuncunun 'Hazırım' olarak işaretlenmiş ve bir nickname girmiş olması gerekir. Şu anda ${readyPlayerInfos.length} oyuncu bu koşulları sağlıyor.`,
+        variant: "destructive",
+        duration: 5000,
+      });
+      setGamePhase('lobby'); // Lobi ekranında kal
+      setPlayers([]); // Önceki oyuncu listesini temizle (varsa)
+      return; 
+    }
+
+    const playersToRace: Player[] = readyPlayerInfos.map((info, index) => ({
+      id: `player${index + 1}`, // ID'leri hazır oyunculara göre yeniden ata
       name: info.name,
       color: info.color,
-      speed: 0,
+      speed: 0, // Hız başlangıçta sıfır olacak
       position: 0,
       lap: 1,
       finishTime: null,
       rank: undefined,
       lastCheckpointPassed: 0,
     }));
-    setPlayers(initialPlayers);
+
+    setPlayers(playersToRace);
     setGamePhase('countdown');
     setCountdown(COUNTDOWN_SECONDS);
-  }, []);
+  }, [toast]);
 
   // Countdown Logic
   useEffect(() => {
@@ -58,6 +72,7 @@ export default function VelocityDashPage() {
         return () => clearTimeout(timer);
       } else if (countdown === 0) {
         setPlayers(prevPlayers => {
+          // Sadece yarışacak oyuncular için başlangıç hızlarını al
           const initialSpeeds = getInitialSpeeds(prevPlayers.length);
           return prevPlayers.map((p, idx) => ({ ...p, speed: initialSpeeds[idx] }));
         });
@@ -139,8 +154,6 @@ export default function VelocityDashPage() {
 
   useEffect(() => {
     if (gamePhase === 'racing') {
-      // lastFrameTimeRef.current and raceStartTimeRef.current are now reliably set 
-      // by the countdown === 0 logic. No need to re-initialize them here.
       gameLoopRef.current = requestAnimationFrame(runGameLoop);
     } else {
       if (gameLoopRef.current) {
