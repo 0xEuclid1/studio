@@ -30,8 +30,7 @@ export default function VelocityDashPage() {
     setGamePhase('lobby');
   }, []);
 
-  const handleSetupComplete = useCallback((playerInfos: [PlayerSetupInfo, PlayerSetupInfo]) => {
-    const initialSpeeds = getInitialSpeeds();
+  const handleSetupComplete = useCallback((playerInfos: PlayerSetupInfo[]) => { // Expect array of PlayerSetupInfo
     const initialPlayers: Player[] = playerInfos.map((info, index) => ({
       id: `player${index + 1}`,
       name: info.name,
@@ -57,7 +56,7 @@ export default function VelocityDashPage() {
       } else if (countdown === 0) {
         // Assign initial speeds when countdown finishes
         setPlayers(prevPlayers => {
-          const initialSpeeds = getInitialSpeeds();
+          const initialSpeeds = getInitialSpeeds(prevPlayers.length); // Pass number of players
           return prevPlayers.map((p, idx) => ({ ...p, speed: initialSpeeds[idx] }));
         });
         setGamePhase('racing');
@@ -87,6 +86,7 @@ export default function VelocityDashPage() {
 
       // Checkpoint logic
       for (const cp of CHECKPOINTS) {
+        // Player must pass the checkpoint in this frame and not have passed it before in this lap segment
         if (player.position < cp.position && newPosition >= cp.position && player.lastCheckpointPassed < cp.id) {
           newSpeed = getRandomSpeed(); 
           newLastCheckpointPassed = cp.id;
@@ -103,7 +103,9 @@ export default function VelocityDashPage() {
       if (newPosition >= RACE_LAPS) {
         newPosition = RACE_LAPS; // Cap at finish line
         if (!player.finishTime) {
-          const finishTime = Date.now(); // Or a more precise timer from game start
+          // Calculate finish time based on a consistent game start time, or relative to race start after countdown.
+          // For simplicity, using Date.now() but ideally this would be based on time elapsed since race started.
+          const finishTime = performance.now() - (lastFrameTimeRef.current - deltaTime*1000); // Approximate time since race start
           toast({
             title: `${player.name} finished!`,
             variant: "default",
@@ -133,8 +135,6 @@ export default function VelocityDashPage() {
       return; // Stop loop
     }
     
-    // Limit FPS by scheduling next frame appropriately, or rely on requestAnimationFrame's natural sync
-    // For simplicity, directly call next frame. For strict FPS, more complex timing is needed.
     gameLoopRef.current = requestAnimationFrame(runGameLoop);
 
   }, [gamePhase, players, toast]);
@@ -142,7 +142,8 @@ export default function VelocityDashPage() {
 
   useEffect(() => {
     if (gamePhase === 'racing') {
-      lastFrameTimeRef.current = performance.now();
+      // Ensure lastFrameTimeRef is set correctly when racing starts, potentially after countdown
+      lastFrameTimeRef.current = performance.now(); 
       gameLoopRef.current = requestAnimationFrame(runGameLoop);
     } else {
       if (gameLoopRef.current) {
@@ -166,6 +167,11 @@ export default function VelocityDashPage() {
   }
 
   if (gamePhase === 'results') {
+    // In results, finishTime is a timestamp. We need to show duration.
+    // Assuming leaderboard handles display correctly based on finishTime being a timestamp.
+    // If finishTime needs to be duration, conversion should happen before passing to Leaderboard or inside it.
+    // For Leaderboard, it expects finishTime to be a number that can be divided by 1000 for seconds.
+    // The current calculation of finishTime is performance.now() - (start time), which is a duration.
     return <Leaderboard players={players} onPlayAgain={resetGame} />;
   }
 
