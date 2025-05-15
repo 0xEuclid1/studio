@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -22,20 +23,22 @@ export default function VelocityDashPage() {
   const { toast } = useToast();
   const gameLoopRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(0);
+  const raceStartTimeRef = useRef<number | null>(null); // Yarış başlangıç zamanını tutacak
 
   const resetGame = useCallback(() => {
     if (gameLoopRef.current) cancelAnimationFrame(gameLoopRef.current);
     setPlayers([]);
     setCountdown(null);
     setGamePhase('lobby');
+    raceStartTimeRef.current = null; // Yarış başlangıç zamanını sıfırla
   }, []);
 
-  const handleSetupComplete = useCallback((playerInfos: PlayerSetupInfo[]) => { // Expect array of PlayerSetupInfo
+  const handleSetupComplete = useCallback((playerInfos: PlayerSetupInfo[]) => {
     const initialPlayers: Player[] = playerInfos.map((info, index) => ({
       id: `player${index + 1}`,
       name: info.name,
       color: info.color,
-      speed: 0, // Speeds will be set after countdown
+      speed: 0,
       position: 0,
       lap: 1,
       finishTime: null,
@@ -54,14 +57,14 @@ export default function VelocityDashPage() {
         const timer = setTimeout(() => setCountdown(c => (c !== null ? c - 1 : null)), 1000);
         return () => clearTimeout(timer);
       } else if (countdown === 0) {
-        // Assign initial speeds when countdown finishes
         setPlayers(prevPlayers => {
-          const initialSpeeds = getInitialSpeeds(prevPlayers.length); // Pass number of players
+          const initialSpeeds = getInitialSpeeds(prevPlayers.length);
           return prevPlayers.map((p, idx) => ({ ...p, speed: initialSpeeds[idx] }));
         });
         setGamePhase('racing');
-        setCountdown(null); // End countdown display
-        lastFrameTimeRef.current = performance.now(); // Initialize for game loop
+        setCountdown(null); 
+        lastFrameTimeRef.current = performance.now();
+        raceStartTimeRef.current = performance.now(); // Yarış başladığında başlangıç zamanını kaydet
       }
     }
   }, [gamePhase, countdown]);
@@ -75,7 +78,7 @@ export default function VelocityDashPage() {
 
     let allFinished = true;
     const updatedPlayers = players.map(player => {
-      if (player.finishTime !== null) { // Already finished
+      if (player.finishTime !== null) {
         return player;
       }
       allFinished = false;
@@ -84,30 +87,29 @@ export default function VelocityDashPage() {
       let newSpeed = player.speed;
       let newLastCheckpointPassed = player.lastCheckpointPassed;
 
-      // Checkpoint logic
+      // Checkpoint logic (RACE_LAPS = 1 için mevcut haliyle çalışır)
+      // Eğer RACE_LAPS > 1 olacaksa, cp.position'ın mevcut tur içindeki ilerlemeyle karşılaştırılması gerekir.
+      // Örneğin: const currentLapProgress = player.position % 1; if (previousLapProgress < cp.position && currentLapProgress >= cp.position ...)
       for (const cp of CHECKPOINTS) {
-        // Player must pass the checkpoint in this frame and not have passed it before in this lap segment
         if (player.position < cp.position && newPosition >= cp.position && player.lastCheckpointPassed < cp.id) {
           newSpeed = getRandomSpeed(); 
           newLastCheckpointPassed = cp.id;
           toast({
-            title: `${player.name} hit checkpoint ${cp.id}!`,
-            description: `New speed assigned.`,
+            title: `${player.name} viraj ${cp.id}'i geçti!`,
+            description: `Yeni hız atandı.`,
             duration: 2000,
           });
-          break; // Process one checkpoint per frame
+          break; 
         }
       }
       
-      // Handle lap completion / finish
       if (newPosition >= RACE_LAPS) {
-        newPosition = RACE_LAPS; // Cap at finish line
+        newPosition = RACE_LAPS; 
         if (!player.finishTime) {
-          // Calculate finish time based on a consistent game start time, or relative to race start after countdown.
-          // For simplicity, using Date.now() but ideally this would be based on time elapsed since race started.
-          const finishTime = performance.now() - (lastFrameTimeRef.current - deltaTime*1000); // Approximate time since race start
+          // Bitiş zamanını, yarışın gerçek başlangıç zamanına göre hesapla
+          const finishTime = raceStartTimeRef.current ? performance.now() - raceStartTimeRef.current : 0;
           toast({
-            title: `${player.name} finished!`,
+            title: `${player.name} yarışı bitirdi!`,
             variant: "default",
             duration: 3000,
           });
@@ -122,7 +124,6 @@ export default function VelocityDashPage() {
 
     if (allFinished && updatedPlayers.length > 0) {
       setGamePhase('results');
-      // Assign ranks
       const sortedByTime = [...updatedPlayers]
         .filter(p => p.finishTime !== null)
         .sort((a, b) => (a.finishTime as number) - (b.finishTime as number));
@@ -132,7 +133,7 @@ export default function VelocityDashPage() {
         return {...p, rank: p.finishTime !== null ? rank + 1 : undefined};
       });
       setPlayers(finalPlayers);
-      return; // Stop loop
+      return; 
     }
     
     gameLoopRef.current = requestAnimationFrame(runGameLoop);
@@ -142,8 +143,10 @@ export default function VelocityDashPage() {
 
   useEffect(() => {
     if (gamePhase === 'racing') {
-      // Ensure lastFrameTimeRef is set correctly when racing starts, potentially after countdown
       lastFrameTimeRef.current = performance.now(); 
+      if (!raceStartTimeRef.current) { // Eğer countdown'dan geçilmediyse (örn. direkt racing başlarsa diye bir önlem)
+        raceStartTimeRef.current = performance.now();
+      }
       gameLoopRef.current = requestAnimationFrame(runGameLoop);
     } else {
       if (gameLoopRef.current) {
@@ -167,17 +170,12 @@ export default function VelocityDashPage() {
   }
 
   if (gamePhase === 'results') {
-    // In results, finishTime is a timestamp. We need to show duration.
-    // Assuming leaderboard handles display correctly based on finishTime being a timestamp.
-    // If finishTime needs to be duration, conversion should happen before passing to Leaderboard or inside it.
-    // For Leaderboard, it expects finishTime to be a number that can be divided by 1000 for seconds.
-    // The current calculation of finishTime is performance.now() - (start time), which is a duration.
     return <Leaderboard players={players} onPlayAgain={resetGame} />;
   }
 
   return (
     <div className="flex items-center justify-center min-h-screen">
-      <p>Loading Velocity Dash...</p>
+      <p>Velocity Dash Yükleniyor...</p>
     </div>
   );
 }
