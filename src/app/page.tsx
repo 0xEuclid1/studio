@@ -11,7 +11,7 @@ import {
   CHECKPOINTS, 
   COUNTDOWN_SECONDS, 
   RACE_LAPS,
-  GAME_FPS,
+  // GAME_FPS, // GAME_FPS is not used
   getRandomSpeed,
   getInitialSpeeds
 } from '@/lib/game-config';
@@ -23,14 +23,14 @@ export default function VelocityDashPage() {
   const { toast } = useToast();
   const gameLoopRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(0);
-  const raceStartTimeRef = useRef<number | null>(null); // Yarış başlangıç zamanını tutacak
+  const raceStartTimeRef = useRef<number | null>(null); 
 
   const resetGame = useCallback(() => {
     if (gameLoopRef.current) cancelAnimationFrame(gameLoopRef.current);
     setPlayers([]);
     setCountdown(null);
     setGamePhase('lobby');
-    raceStartTimeRef.current = null; // Yarış başlangıç zamanını sıfırla
+    raceStartTimeRef.current = null; 
   }, []);
 
   const handleSetupComplete = useCallback((playerInfos: PlayerSetupInfo[]) => {
@@ -64,7 +64,7 @@ export default function VelocityDashPage() {
         setGamePhase('racing');
         setCountdown(null); 
         lastFrameTimeRef.current = performance.now();
-        raceStartTimeRef.current = performance.now(); // Yarış başladığında başlangıç zamanını kaydet
+        raceStartTimeRef.current = performance.now(); 
       }
     }
   }, [gamePhase, countdown]);
@@ -87,9 +87,6 @@ export default function VelocityDashPage() {
       let newSpeed = player.speed;
       let newLastCheckpointPassed = player.lastCheckpointPassed;
 
-      // Checkpoint logic (RACE_LAPS = 1 için mevcut haliyle çalışır)
-      // Eğer RACE_LAPS > 1 olacaksa, cp.position'ın mevcut tur içindeki ilerlemeyle karşılaştırılması gerekir.
-      // Örneğin: const currentLapProgress = player.position % 1; if (previousLapProgress < cp.position && currentLapProgress >= cp.position ...)
       for (const cp of CHECKPOINTS) {
         if (player.position < cp.position && newPosition >= cp.position && player.lastCheckpointPassed < cp.id) {
           newSpeed = getRandomSpeed(); 
@@ -106,14 +103,13 @@ export default function VelocityDashPage() {
       if (newPosition >= RACE_LAPS) {
         newPosition = RACE_LAPS; 
         if (!player.finishTime) {
-          // Bitiş zamanını, yarışın gerçek başlangıç zamanına göre hesapla
-          const finishTime = raceStartTimeRef.current ? performance.now() - raceStartTimeRef.current : 0;
+          const finishTimeValue = raceStartTimeRef.current ? performance.now() - raceStartTimeRef.current : 0;
           toast({
             title: `${player.name} yarışı bitirdi!`,
             variant: "default",
             duration: 3000,
           });
-          return { ...player, position: newPosition, speed: newSpeed, lastCheckpointPassed: newLastCheckpointPassed, finishTime, lap: RACE_LAPS };
+          return { ...player, position: newPosition, speed: newSpeed, lastCheckpointPassed: newLastCheckpointPassed, finishTime: finishTimeValue, lap: RACE_LAPS };
         }
       }
       
@@ -143,10 +139,8 @@ export default function VelocityDashPage() {
 
   useEffect(() => {
     if (gamePhase === 'racing') {
-      lastFrameTimeRef.current = performance.now(); 
-      if (!raceStartTimeRef.current) { // Eğer countdown'dan geçilmediyse (örn. direkt racing başlarsa diye bir önlem)
-        raceStartTimeRef.current = performance.now();
-      }
+      // lastFrameTimeRef.current and raceStartTimeRef.current are now reliably set 
+      // by the countdown === 0 logic. No need to re-initialize them here.
       gameLoopRef.current = requestAnimationFrame(runGameLoop);
     } else {
       if (gameLoopRef.current) {
